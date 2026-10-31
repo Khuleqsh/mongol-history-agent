@@ -43,10 +43,11 @@ def regressed(score: float, baseline: float | None, tolerance: float = 0.02) -> 
     return baseline is not None and score < baseline - tolerance
 
 
-def append_history(path: Path, score: float, prompt: str, model: str, total: int) -> None:
+def append_history(path: Path, score: float, prompt: str, model: str, total: int, provider: str = "") -> None:
     rec = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "prompt": prompt,
+        "provider": provider,
         "model": model,
         "score": round(score, 4),
         "total": total,

@@ -2,7 +2,8 @@ import json
 import re
 from datetime import datetime, timezone
 
-from .config import GAPS, MODEL, PROMPT, PROMPTS
+from .config import GAPS, PROMPT, PROMPTS
+from .llm import make_llm
 from .search import Searcher
 from .verify import revise_answer, verify_answer
 
@@ -54,16 +55,13 @@ def load_prompt(name: str) -> str:
 
 
 class Agent:
-    def __init__(self, client=None, searcher=None, prompt: str | None = None, model: str | None = None) -> None:
-        if client is None:
-            import anthropic
-
-            client = anthropic.Anthropic()
-        self.client = client
+    def __init__(self, llm=None, searcher=None, prompt: str | None = None) -> None:
+        self.llm = llm or make_llm()
         self.searcher = searcher or Searcher()
         self.prompt_name = prompt or PROMPT
         self.system_base = load_prompt(self.prompt_name)
-        self.model = model or MODEL
+        self.model = self.llm.model
+        self.provider = self.llm.name
 
     def ask(
         self,
@@ -74,7 +72,7 @@ class Agent:
         max_turns: int = 6,
     ) -> dict:
         system = self.system_base + LEVELS.get(level, "")
-        messages = list(history or []) + [{"role": "user", "content": question}]
+        conv = self.llm.start(system, history or [], question)
         labels: dict[str, str] = {}
         cited: dict[str, dict] = {}
         passages: dict[str, str] = {}
@@ -82,27 +80,22 @@ class Agent:
 
         answer = ""
         for _ in range(max_turns):
-            resp = self.client.messages.create(
-                model=self.model, max_tokens=2500, system=system, tools=TOOLS, messages=messages
-            )
-            messages.append({"role": "assistant", "content": resp.content})
-            if resp.stop_reason != "tool_use":
-                answer = "".join(b.text for b in resp.content if b.type == "text")
+            step = self.llm.step(conv, TOOLS)
+            if not step.tool_calls:
+                answer = step.text
                 break
-            results = []
-            for b in resp.content:
-                if b.type == "tool_use":
-                    out = self._run(b.name, b.input, labels, cited, passages, state)
-                    results.append({"type": "tool_result", "tool_use_id": b.id, "content": out})
-            messages.append({"role": "user", "content": results})
+            results = [(c, self._run(c.name, c.args, labels, cited, passages, state)) for c in step.tool_calls]
+            self.llm.add_tool_results(conv, results)
         else:
             answer = "Хайлт хэт удаан үргэлжилсэн тул дуусгаж чадсангүй. Асуултаа жижиглэн дахин асууна уу."
+        if not answer.strip():
+            answer = "Загвар хариулт өгсөнгүй. Дахин оролдоно уу."
 
         unsupported: list[dict] = []
         if verify and passages and re.search(r"\[S\d+\]", answer):
-            unsupported = verify_answer(self.client, self.model, answer, passages)
+            unsupported = verify_answer(self.llm, answer, passages)
             if unsupported:
-                answer = revise_answer(self.client, self.model, answer, passages, unsupported)
+                answer = revise_answer(self.llm, answer, passages, unsupported)
 
         used = set(re.findall(r"\[(S\d+)\]", answer))
         return {

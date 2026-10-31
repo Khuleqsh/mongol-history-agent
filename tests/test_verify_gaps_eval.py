@@ -52,8 +52,9 @@ def test_baseline_regression(tmp_path):
     p.write_text(json.dumps({"score": 0.8}))
     assert evalkit.read_baseline(p) == 0.8
     h = tmp_path / "h.jsonl"
-    evalkit.append_history(h, 0.8, "v2", "m", 10)
-    assert json.loads(h.read_text())["prompt"] == "v2"
+    evalkit.append_history(h, 0.8, "v2", "m", 10, "gemini")
+    rec = json.loads(h.read_text())
+    assert rec["prompt"] == "v2" and rec["provider"] == "gemini"
 
 
 def test_feedback_bad_creates_candidate(tmp_path, monkeypatch):
@@ -86,3 +87,18 @@ def test_build_records_metadata():
     assert recs[0]["meta"]["years"] == "1206"
     assert recs[1]["embed_text"].startswith("Шастир — Хоёр")
     assert [r["id"] for r in recs] == ["s:0", "s:1"]
+
+
+def test_cli_quota_error_is_friendly(monkeypatch, capsys):
+    import pytest
+
+    from mha import cli
+    from mha.llm import QuotaExceeded
+
+    def boom(argv=None):
+        raise QuotaExceeded("квот дууссан")
+
+    monkeypatch.setattr(cli, "_main", boom)
+    with pytest.raises(SystemExit) as e:
+        cli.main([])
+    assert e.value.code == 2 and "квот дууссан" in capsys.readouterr().out

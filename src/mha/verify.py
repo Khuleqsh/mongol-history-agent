@@ -21,28 +21,22 @@ def extract_json(text: str):
         return None
 
 
-def _text(resp) -> str:
-    return "".join(b.text for b in resp.content if b.type == "text")
-
-
 def _passages_block(answer: str, passages: dict[str, str]) -> str:
     used = set(re.findall(r"\[(S\d+)\]", answer))
     return "\n\n".join(f"[{k}] {v}" for k, v in passages.items() if k in used)
 
 
-def verify_answer(client, model: str, answer: str, passages: dict[str, str]) -> list[dict]:
+def verify_answer(llm, answer: str, passages: dict[str, str]) -> list[dict]:
     body = f"{VERIFY_PROMPT}\n\nSOURCE PASSAGES:\n{_passages_block(answer, passages)}\n\nANSWER:\n{answer}"
-    resp = client.messages.create(model=model, max_tokens=1200, messages=[{"role": "user", "content": body}])
-    data = extract_json(_text(resp))
+    data = extract_json(llm.complete(body, max_tokens=1200))
     if isinstance(data, dict) and isinstance(data.get("unsupported"), list):
         return data["unsupported"]
     return []
 
 
-def revise_answer(client, model: str, answer: str, passages: dict[str, str], unsupported: list[dict]) -> str:
+def revise_answer(llm, answer: str, passages: dict[str, str], unsupported: list[dict]) -> str:
     body = (
         f"{REVISE_PROMPT}\n\nSOURCE PASSAGES:\n{_passages_block(answer, passages)}\n\n"
         f"UNSUPPORTED:\n{json.dumps(unsupported, ensure_ascii=False)}\n\nANSWER:\n{answer}"
     )
-    resp = client.messages.create(model=model, max_tokens=2500, messages=[{"role": "user", "content": body}])
-    return _text(resp) or answer
+    return llm.complete(body, max_tokens=2500) or answer

@@ -8,5 +8,5 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       # Хүнд model (torch) суулгахгүй: тестүүд хуурамч embedder ашигладаг
-      - run: pip install pytest chromadb rank-bm25 numpy
+      - run: pip install pytest chromadb rank-bm25 numpy google-genai
       - run: pytest -q

@@ -3,7 +3,8 @@
 ```
 Асуулт (Монгол / Латин-Монгол / English)
         │
-   Agent (Claude, tool use, prompts/v2.md, level: brief|standard|student|researcher)
+   Agent (LLM tool use, prompts/v2.md, level: brief|standard|student|researcher)
+        │   provider давхарга (llm.py): Gemini (анхдагч) | Anthropic
         │  search_history(queries[], year_from?, year_to?)      report_gap(topic)
         ▼
    Searcher

@@ -19,6 +19,16 @@ def _print_answer(r: dict) -> None:
 
 
 def main(argv=None) -> None:
+    from .llm import QuotaExceeded
+
+    try:
+        _main(argv)
+    except QuotaExceeded as e:
+        print(f"⚠ {e}")
+        sys.exit(2)
+
+
+def _main(argv=None) -> None:
     try:
         from dotenv import load_dotenv
 
@@ -99,7 +109,7 @@ def main(argv=None) -> None:
         items = evalkit.load_questions(EVAL_DIR / "questions.jsonl")
         score = evalkit.run_eval(agent, items)
         print(f"Оноо: {score:.2%}")
-        evalkit.append_history(EVAL_DIR / "history.jsonl", score, agent.prompt_name, agent.model, len(items))
+        evalkit.append_history(EVAL_DIR / "history.jsonl", score, agent.prompt_name, agent.model, len(items), agent.provider)
         baseline_path = EVAL_DIR / "baseline.json"
         if args.update_baseline:
             baseline_path.write_text(json.dumps({"score": score}))

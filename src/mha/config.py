@@ -12,7 +12,14 @@ FEEDBACK = DATA / "feedback.jsonl"
 PROMPTS = ROOT / "prompts"
 EVAL_DIR = ROOT / "eval"
 
-MODEL = os.getenv("MHA_MODEL", "claude-sonnet-5-5")
+# Provider: "gemini" (анхдагч, үнэгүй tier-тэй) эсвэл "anthropic"
+PROVIDER = os.getenv("MHA_PROVIDER", "gemini").lower()
+DEFAULT_MODELS = {
+    # Flash-Lite нь free tier дээр өдрийн хүсэлтийн хязгаар илүү өндөр гэж мэдээлэгддэг. AI Studio-оос өөрийн түлхүүрийн хандах боломжтой загварыг шалгаарай.
+    "gemini": "gemini-3.5-flash-lite",
+    "anthropic": "claude-sonnet-5-5",
+}
+MODEL = os.getenv("MHA_MODEL") or DEFAULT_MODELS.get(PROVIDER, "")
 # bge-m3: 100+ хэл дэмждэг тул Монгол, англи, орос, хятад асуулт нэг орон зайд хайгдана.
 EMBED_MODEL = os.getenv("MHA_EMBED_MODEL", "BAAI/bge-m3")
 # Cross-encoder reranker. Хоосон string ("") бол унтраана.

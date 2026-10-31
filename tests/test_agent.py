@@ -1,26 +1,33 @@
-from types import SimpleNamespace as NS
-
 from mha import agent as agent_mod
 from mha.agent import Agent
+from mha.llm import Step, ToolCall
 
 
-def text(t):
-    return NS(content=[NS(type="text", text=t)], stop_reason="end_turn")
+class FakeLLM:
+    name, model = "fake", "fake-1"
+
+    def __init__(self, steps, completions=()):
+        self.steps, self.completions = list(steps), list(completions)
+        self.convs, self.prompts = [], []
+
+    def start(self, system, history, question):
+        conv = {"system": system, "history": history, "question": question, "results": []}
+        self.convs.append(conv)
+        return conv
+
+    def step(self, conv, tools, max_tokens=2500):
+        return self.steps.pop(0)
+
+    def add_tool_results(self, conv, results):
+        conv["results"].append(results)
+
+    def complete(self, prompt, max_tokens=2000):
+        self.prompts.append(prompt)
+        return self.completions.pop(0)
 
 
-def tool(name, inp, tid="t1"):
-    return NS(content=[NS(type="tool_use", id=tid, name=name, input=inp)], stop_reason="tool_use")
-
-
-class FakeClient:
-    def __init__(self, script):
-        self.script = list(script)
-        self.calls = []
-        self.messages = self
-
-    def create(self, **kw):
-        self.calls.append(kw)
-        return self.script.pop(0)
+def call(name, args, cid="t1"):
+    return Step("", [ToolCall(cid, name, args)])
 
 
 class FakeSearcher:
@@ -35,55 +42,64 @@ class FakeSearcher:
         ]
 
 
-def make(script, tmp_path, monkeypatch):
+def make(steps, tmp_path, monkeypatch, completions=()):
     monkeypatch.setattr(agent_mod, "GAPS", tmp_path / "gaps.jsonl")
     s = FakeSearcher()
-    return Agent(client=FakeClient(script), searcher=s, prompt="v2"), s
+    return Agent(llm=FakeLLM(steps, completions), searcher=s, prompt="v2"), s
 
 
 def test_search_then_answer(tmp_path, monkeypatch):
-    a, s = make([tool("search_history", {"queries": ["q"], "year_from": 1200}), text("1206 онд хаан болсон [S1].")], tmp_path, monkeypatch)
+    a, s = make([call("search_history", {"queries": ["q"], "year_from": 1200}), Step("1206 онд хаан болсон [S1].")], tmp_path, monkeypatch)
     r = a.ask("Хэзээ?")
     assert r["searched"] and not r["gap"]
     assert list(r["sources"]) == ["S1"] and r["sources"]["S1"]["section"] == "Нэг"
     assert r["invalid_citations"] == []
     assert s.calls == [(["q"], 1200, None)]
+    # хайлтын үр дүн эх сурвалжийн шошготойгоор загварт буцсан
+    sent = a.llm.convs[0]["results"][0][0][1]
+    assert sent.startswith("[S1] Шастир") and "1206" in sent
 
 
 def test_invalid_citation_detected(tmp_path, monkeypatch):
-    a, _ = make([tool("search_history", {"queries": ["q"]}), text("Юм [S1]. Өөр юм [S9].")], tmp_path, monkeypatch)
-    r = a.ask("?")
-    assert r["invalid_citations"] == ["S9"]
+    a, _ = make([call("search_history", {"queries": ["q"]}), Step("Юм [S1]. Өөр юм [S9].")], tmp_path, monkeypatch)
+    assert a.ask("?")["invalid_citations"] == ["S9"]
 
 
 def test_gap_is_logged(tmp_path, monkeypatch):
-    a, _ = make([tool("search_history", {"queries": ["q"]}), tool("report_gap", {"topic": "Зуд"}, "t2"), text("Архивт алга.")], tmp_path, monkeypatch)
+    a, _ = make([call("search_history", {"queries": ["q"]}), call("report_gap", {"topic": "Зуд"}, "t2"), Step("Архивт алга.")], tmp_path, monkeypatch)
     r = a.ask("Зуд?")
     assert r["gap"]
     assert "Зуд" in (tmp_path / "gaps.jsonl").read_text(encoding="utf-8")
 
 
 def test_verify_revises_unsupported(tmp_path, monkeypatch):
-    script = [
-        tool("search_history", {"queries": ["q"]}),
-        text("1207 онд хаан болсон [S1]."),
-        text('{"unsupported": [{"claim": "1207", "reason": "passage says 1206"}]}'),
-        text("1206 онд хаан болсон [S1]."),
-    ]
-    a, _ = make(script, tmp_path, monkeypatch)
+    a, _ = make(
+        [call("search_history", {"queries": ["q"]}), Step("1207 онд хаан болсон [S1].")],
+        tmp_path, monkeypatch,
+        completions=['{"unsupported": [{"claim": "1207", "reason": "passage says 1206"}]}', "1206 онд хаан болсон [S1]."],
+    )
     r = a.ask("?", verify=True)
     assert "1206" in r["answer"] and len(r["unsupported_removed"]) == 1
+    assert "1206 онд Тэмүжин" in a.llm.prompts[0]  # шалгагч эх сурвалжийн бодит текстийг харсан
+
+
+def test_verify_skipped_when_nothing_to_check(tmp_path, monkeypatch):
+    a, _ = make([Step("Сайн уу")], tmp_path, monkeypatch)
+    assert a.ask("Сайн уу", verify=True)["unsupported_removed"] == []
+    assert a.llm.prompts == []
 
 
 def test_level_and_history_reach_model(tmp_path, monkeypatch):
-    a, _ = make([text("Сайн уу")], tmp_path, monkeypatch)
-    r = a.ask("Сайн уу", level="student", history=[{"role": "user", "content": "өмнөх"}, {"role": "assistant", "content": "хариу"}])
-    call = a.client.calls[0]
-    assert "student" in call["system"] and call["messages"][2] == {"role": "user", "content": "Сайн уу"}
+    a, _ = make([Step("Сайн уу")], tmp_path, monkeypatch)
+    hist = [{"role": "user", "content": "өмнөх"}, {"role": "assistant", "content": "хариу"}]
+    r = a.ask("Сайн уу", level="student", history=hist)
+    conv = a.llm.convs[0]
+    assert "student" in conv["system"] and conv["history"] == hist
     assert r["searched"] is False
 
 
-def test_max_turns_fallback(tmp_path, monkeypatch):
-    a, _ = make([tool("search_history", {"queries": ["q"]}, f"t{i}") for i in range(3)], tmp_path, monkeypatch)
-    r = a.ask("?", max_turns=3)
-    assert "дуусгаж чадсангүй" in r["answer"]
+def test_max_turns_fallback_and_empty_answer(tmp_path, monkeypatch):
+    a, _ = make([call("search_history", {"queries": ["q"]}, f"t{i}") for i in range(3)], tmp_path, monkeypatch)
+    assert "дуусгаж чадсангүй" in a.ask("?", max_turns=3)["answer"]
+    b, _ = make([Step("")], tmp_path, monkeypatch)
+    assert "хариулт өгсөнгүй" in b.ask("?")["answer"]

@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mongol-history-agent"
-version = "0.2.0"
+version = "0.3.0"
 description = "Multilingual, citation-first agentic research assistant for Mongolian history"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
-  "anthropic>=0.40",
+  "google-genai>=1.0",
   "chromadb>=0.5",
   "sentence-transformers>=3.0",
   "rank-bm25>=0.2.2",
@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ui = ["streamlit>=1.35"]
+anthropic = ["anthropic>=0.40"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
