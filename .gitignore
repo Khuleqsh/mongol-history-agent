@@ -1,0 +1,9 @@
+.env
+.venv/
+__pycache__/
+*.egg-info/
+data/index/
+data/*.jsonl
+data/raw/personal/
+eval/candidates.jsonl
+eval/history.jsonl

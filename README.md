@@ -1,2 +1,55 @@
-# mongol-history-agent
-Multilingual agentic AI for Mongolian history: searches archives in Mongolian, English, Russian &amp; Chinese, answers in clear chronological order with source citations, flags conflicting accounts, and improves through feedback-driven evals.
+# 📜 mongol-history-agent
+
+Монголын түүхийн архивт хайлт хийж, **ишлэлтэй, цаг хугацааны дарааллаар, ойлгомжтой** хариулдаг agentic AI.
+Асуултыг Монгол (Кирилл ба Латин), English хэлээр ойлгож, хайлтыг **олон хэлээр** (Монгол, англи, орос, хятад...) хийнэ.
+
+## Онцлог
+- **Hybrid хайлт**: `bge-m3` олон хэлний vector + BM25 + RRF, нэрийн хувилбарын автомат өргөжүүлэлт (Тэмүжин ↔ Temüjin ↔ 铁木真), оноор шүүлт, reranker, эх сурвалжаар тэнцвэржүүлэлт
+- **Ишлэл заавал**: хариултын өгүүлбэр бүр `[S#]`-ээр эх сурвалжид холбогдоно, олдоогүй ишлэлийг илрүүлнэ
+- **Эх сурвалжийн зөрүүг зэрэгцүүлж** харуулна, мэдэхгүй зүйлээ мэдэхгүй гэнэ
+- **Тайлбарын түвшин**: `brief` / `standard` / `student` / `researcher`
+- **Ишлэлийн давхар шалгалт** (`--verify`): тусдаа дуудлагаар батлагдаагүй мэдэгдлийг олж засна
+- **Өөрийгөө сайжруулах мөчлөг**: цоорхойн бүртгэл, хэрэглэгчийн санал -> eval, baseline-аас буурвал татгалзах, prompt хувилбарын харьцуулалт ([дэлгэрэнгүй](docs/ARCHITECTURE.md))
+- CLI, олон дахин ярилцах `chat`, Streamlit вэб
+
+## Эхлэх
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,ui]"
+cp .env.example .env            # ANTHROPIC_API_KEY-ээ оруул
+
+# 1) Эх сурвалжаа data/raw/-д хуулж, data/sources.json-д бүртгэ
+mha check-sources
+mha ingest
+
+# 2) Асуу
+mha ask "Чингис хаан хэзээ хаан өргөмжлөгдсөн бэ?" --level student
+mha chat --verify
+streamlit run app/streamlit_app.py
+
+# 3) Хэмж, сайжруул
+mha eval --update-baseline      # анхны оноо
+mha eval                        # өөрчлөлт бүрийн дараа; буурвал exit 1
+mha gaps                        # архивт юу дутаж байна вэ?
+MHA_PROMPT=v1 mha eval          # prompt хувилбарыг харьцуулах
+```
+
+## Эх сурвалж нэмэх
+`data/sources.json`-д бүртгэнэ (`id, file, title, lang, license` заавал; `author, year, kind: primary|secondary, url` нэмэлт).
+`.md` / `.txt` / `.pdf` дэмжинэ. `#` гарчиг бүхий markdown бол chunk бүрт бүлгийн нэр хадгалагдаж ишлэл нарийсна.
+Хуулийн дүрэм: `public-domain`, `cc0`, `cc-by`, `cc-by-sa`, `open`, `own`, `permission` лицензтэй эх сурвалжийг л репод оруулна.
+Зохиогчийн эрхтэй номыг `license: personal-use` болгож `data/raw/personal/` дотор байлгана (git-д орохгүй).
+Эх сурвалж бүрийн лицензийг тус бүрээр нь шалгаж баталгаажуулаарай.
+
+## Нэрийн хувилбар нэмэх
+`data/aliases.json`-д нэг хүн/газар/үйл явдлын бүх бичлэгийг нэг жагсаалтад нэм. Хайлт автоматаар өргөжинө.
+
+## Хөгжүүлэлт
+```bash
+pytest -q        # 29+ тест; хүнд model хэрэггүй, хуурамч embedder ашиглана
+```
+
+## Дараагийн алхмууд
+Entity граф, timeline/газрын зургийн дүрслэл, Монгол бичгийн OCR, eval дээр LLM шүүгч, Латин-Кирилл тусгай хөрвүүлэгч.
+
+MIT лиценз.

@@ -1,0 +1,4 @@
+{"q": "Чингис хаан хэдэн онд хаан өргөмжлөгдсөн бэ?", "must_include": ["1206"]}
+{"q": "When was Genghis Khan proclaimed ruler of the Mongols?", "must_include": ["1206"]}
+{"q": "chinggis khaan khezee khaan bolson be?", "must_include": ["1206"]}
+{"q": "Монголын 2050 оны хүн амын тоо хэд байх вэ?", "expect_gap": true}
